@@ -1,0 +1,388 @@
+image: mcr.microsoft.com/dotnet/sdk:8.0
+
+pipelines:
+    pull-requests:
+        '**':
+            - step:
+                name: 📝 Validar Swagger/OpenAPI
+                script:
+                   # Instalar Node.js
+                  - echo "🔧 Instalando Node.js..."
+                  - apt-get update && apt-get install -y curl
+                  - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+                  - apt-get install -y nodejs
+                  
+                  # Instalar swagger-cli
+                  - npm install -g @apidevtools/swagger-cli
+                  
+                  # Validación
+                  - swagger-cli validate Microservice/swagger.yaml || (echo "❌ Validación Swagger falló"; exit 1)
+                  - echo "✅ Swagger validado correctamente"croservice/swagger.yaml || (echo "❌ Validación OpenAPI falló"; exit 1)
+                  - echo "✅ Swagger/OpenAPI validado correctamente"
+            - step:
+                name: 🔍 Lint, Test Coverage ≥90%, Snyk Scan (.NET)
+                script:
+                  - apt-get update
+                  - export PATH="$PATH:/root/.dotnet/tools"
+                  # Installing CD.
+                  - echo "🔧 Instalando bc..."
+                  - apt-get update && apt-get install -y bc curl
+                  # # Installing dependencies such as python, pip and others.
+                  - echo "🔧 Instalando python y dependencias..."
+                  - apt-get install -y python3 python3-pip python3-venv pipx
+                  - pipx install semgrep
+                  - python3 --version
+                  # Linting code.
+                  # - dotnet restore --no-cache --force
+                  - dotnet build || (echo "❌ StyleCop violations or build errors"; exit 1)
+                  - echo "🔎 Comprobando code style con dotnet format..."
+                  - dotnet tool install -g dotnet-format
+                  - dotnet format --verify-no-changes --verbosity diagnostic || (echo "❌ Linting failed"; exit 1)
+                  # Unit tests with coverage check (Coverlet)
+                  - echo "🧪 Running tests with coverage check..."
+                  - cd Microservice.Tests
+                  - echo "📦 Verificando instalación de coverlet.collector..."
+                  - |
+                    if ! grep -q 'coverlet.collector' *.csproj; then
+                      echo "🔧 Instalando coverlet.collector..."
+                      dotnet add package coverlet.collector --version 3.2.0
+                    else
+                      echo "✅ coverlet.collector ya está instalado en el proyecto."
+                    fi
+                  # - dotnet add Microservice.Tests/MS_TRD_GET_ALL.Tests.csproj package coverlet.collector
+                  - dotnet test --collect:"XPlat Code Coverage" --results-directory ./TestResults
+                  - echo "📁 Getting TestResults..."
+                  - find . -name "coverage.cobertura.xml"
+                  - COVERAGE_FILE=$(find . -name "coverage.cobertura.xml" | head -n 1)
+                  - if [ -z "$COVERAGE_FILE" ]; then
+                    echo "❌ Coverage file does not exists.";
+                    exit 1;
+                    fi
+                  # Verificar el porcentaje de cobertura usando ReportGenerator.
+                  - dotnet tool install -g dotnet-reportgenerator-globaltool
+                  - reportgenerator -reports:$COVERAGE_FILE -targetdir:CoverageReport -reporttypes:TextSummary
+                  - cat CoverageReport/Summary.txt
+                  # Extraer cobertura de líneas
+                  - COVERAGE=$(grep "Line coverage" CoverageReport/Summary.txt | grep -Eo '[0-9]+(\.[0-9]+)?')
+                  - echo "📊 Line Coverage:"
+                  - echo $COVERAGE
+                  - if (( $(echo "$COVERAGE < 100" | bc -l) )); then echo "❌ Coverage must be ≥ 100%"; exit 1; fi
+                  # # Análisis SAST con Semgrep
+                  # # - echo "🔐 Instalando y ejecutando Semgrep..."
+                  # # - semgrep scan --config auto --error || (echo "❌ Semgrep encontró problemas de seguridad"; exit 1)
+            - step:
+                 name: 🐳 Construir imagen Docker
+                 services:
+                   - docker  # Esto activa el servicio Docker en tu pipeline
+                 script:
+                   - echo "🔧 Verificando Docker..."
+                   - docker --version
+                   - echo "🐳 Construyendo imagen..."
+                   - docker build -t my-microservice .
+                   - echo "✅ Imagen construida exitosamente"
+                 caches:
+                   - docker                 
+              
+    branches:
+        "master":
+            - step:
+                name: Login to Docker Hub & Use Private Image
+                deployment: Production
+                size: 2x
+                script:
+                    # Login a Docker Hub
+                  - echo $DOCKER_HUB_PASSWORD | docker login -u $DOCKER_HUB_USERNAME --password-stdin
+                  - pipe: docker://gerencia2024/pipeline_docker_image_contraloria_api
+                    variables:
+                      DOCKER_HUB_USERNAME: $DOCKER_HUB_USERNAME
+                      DOCKER_HUB_PASSWORD: $DOCKER_HUB_PASSWORD
+                      REPOSITORY_IMAGE_NAME: $REPOSITORY_IMAGE_NAME
+                      BITBUCKET_BRANCH: $BITBUCKET_BRANCH
+                      OCI_PRIVATE_KEY_BASE64_CONTRALORIA: $OCI_PRIVATE_KEY_BASE64_CONTRALORIA
+                      OCI_USER_ID_CONTRALORIA: $OCI_USER_ID_CONTRALORIA
+                      OCI_FINGERPRINT_CONTRALORIA: $OCI_FINGERPRINT_CONTRALORIA
+                      OCI_TENANCY_ID_CONTRALORIA: $OCI_TENANCY_ID_CONTRALORIA
+                      OCI_COMPARTMENT_ID_CONTRALORIA: $OCI_COMPARTMENT_ID_CONTRALORIA
+                      OCI_GATEWAY_1 : $OCI_GATEWAY_CONTRALORIA_1
+                      OCI_GATEWAY_2 : $OCI_GATEWAY_CONTRALORIA_2
+                      AVAILABILITY_DOMAIN: $AVAILABILITY_DOMAIN
+                      OCI_SUBNET: $OCI_SUBNET_PRIVATE_DEV
+                      OCI_CONTAINER_NAME: $REPOSITORY_IMAGE_NAME
+                      OCI_USER_ID: $OCI_USER_ID
+                      OCI_PRIVATE_KEY_BASE64: $OCI_PRIVATE_KEY_BASE64
+                      OCI_FINGERPRINT: $OCI_FINGERPRINT
+                      AVAILABILITY_DOMAIN_CONTRALORIA: $AVAILABILITY_DOMAIN_CONTRALORIA
+                      OCI_SUBNET_PRIVATE_CONTRALORIA: $OCI_SUBNET_PRIVATE_CONTRALORIA
+                      OCIR_NAMESPACE_CONTRALORIA: $OCIR_NAMESPACE_CONTRALORIA
+                      OCI_AUTH_TOKEN_CONTRALORIA: $OCI_AUTH_TOKEN_CONTRALORIA
+                      OCI_USERNAME_CONTRALORIA: $OCI_USERNAME_CONTRALORIA
+                      OCI_SUBNET_PUBLIC_CONTRALORIA: $OCI_SUBNET_PUBLIC_CONTRALORIA
+                      REGION: $REGION
+                      SHAPE: $SHAPE                      
+                      OCI_GATEWAY_CONTRALORIA_1: $OCI_GATEWAY_CONTRALORIA_1
+                      OCI_GATEWAY_CONTRALORIA_2: $OCI_GATEWAY_CONTRALORIA_2
+                      OCI_GATEWAY_COMPARTMENT_CONTRALORIA: $OCI_GATEWAY_COMPARTMENT_CONTRALORIA
+                      OCI_IDCS_CONTRALORIA: $OCI_IDCS_CONTRALORIA
+                      OCI_COMPARTMENT_ID_CONTRALORIA_CONTAINER_REGISTRY: $OCI_COMPARTMENT_ID_CONTRALORIA_CONTAINER_REGISTRY
+                      BUCKET_NAMESPACE_CONTRALORIA: $BUCKET_NAMESPACE_CONTRALORIA
+                      BUCKET_FILE_DEPLOY_CONTRALORIA: $BUCKET_FILE_DEPLOY_CONTRALORIA
+                      BUCKET_NAME: $BUCKET_NAME
+                      ENV_CONNECTION_STRING: $ENV_CONNECTION_STRING
+                      ENV_OCI_CONFIG_PATH: $ENV_OCI_CONFIG_PATH
+                      ENV_OCI_LOG_GROUP: $ENV_OCI_LOG_GROUP
+                      IS_PUBLIC_IP_ASSIGNED: $IS_PUBLIC_IP_ASSIGNED
+                      ENV_CONNECTION_STRING_SETTING: $ENV_CONNECTION_STRING_SETTING
+                      ENV_CONNECTION_STRING_LOANS: $ENV_CONNECTION_STRING_LOANS
+                      ENV_SCIM_HOST: $ENV_SCIM_HOST
+                      ENV_HANGFIRE_POSTGRES_CONNECTION_STRING: $ENV_HANGFIRE_POSTGRES_CONNECTION_STRING
+                      ENV_IP_SERVER_PORT_REDIS: $ENV_IP_SERVER_PORT_REDIS
+                      ENV_UPLOAD_BUCKET_NAME: $ENV_UPLOAD_BUCKET_NAME
+                      ENV_UPLOAD_STREAM_OCID: $ENV_UPLOAD_STREAM_OCID
+                      ENV_PROCESS_BUCKET_NAME: $ENV_PROCESS_BUCKET_NAME
+                      ENV_OCI_CONFIG_PROFILE: $ENV_OCI_CONFIG_PROFILE
+                      ENV_OCI_STREAM_ENDPOINT: $ENV_OCI_STREAM_ENDPOINT
+                      ENV_IDCS_HOST: $ENV_IDCS_HOST
+                      ENV_HOST : $ENV_HOST
+                      ENV_BUCKET_NAME_TEMPLATE: $ENV_BUCKET_NAME_TEMPLATE
+                      ENV_OCI_QUEUE_ENDPOINT : $ENV_OCI_QUEUE_ENDPOINT
+                      ENV_OCI_QUEUE_VALIDATION : $ENV_OCI_QUEUE_VALIDATION
+                      ENV_NAME_SPACE_TEMPLATE : $ENV_NAME_SPACE_TEMPLATE
+                      ENV_FILE_PATH : $ENV_FILE_PATH 
+                      ENV_CONTENT_TYPE : $ENV_CONTENT_TYPE 
+                      ENV_BUCKET_NAME : $ENV_BUCKET_NAME 
+                      ENV_NAME_SPACE : $ENV_NAME_SPACE
+                      ENV_HOST_API : $ENV_HOST_API
+                      ENV_OCI_QUEUE: $ENV_OCI_QUEUE
+                      ENV_NAMESPACE_NAME: $ENV_NAMESPACE_NAME
+                      ENV_ORIGIN_BUCKET_NAME: $ENV_ORIGIN_BUCKET_NAME
+                      ENV_RESULT_BUCKET_NAME: $ENV_RESULT_BUCKET_NAME
+                      ENV_STREAM_OCID: $ENV_STREAM_OCID
+                      ENV_QUEUE_OCID: $ENV_QUEUE_OCID
+                      ENV_QUEUE_ENDPOINT: $ENV_QUEUE_ENDPOINT
+                      ENV_OCI_USE_RESOURCE_PRINCIPAL: $ENV_OCI_USE_RESOURCE_PRINCIPAL
+                      ENV_STREAM_ENDPOINT: $ENV_STREAM_ENDPOINT
+                      ENV_OBJECT_STORAGE_ENDPOINT: $ENV_OBJECT_STORAGE_ENDPOINT
+                      ENV_DOSSIER_CONNECTION_STRING : $ENV_DOSSIER_CONNECTION_STRING
+                      ENV_INVENTORY_CONNECTION_STRING : $ENV_INVENTORY_CONNECTION_STRING
+                      ENV_TRD_CONNECTION_STRIN : $ENV_TRD_CONNECTION_STRIN
+                      ENV_OCI_CONFIG_PROFIL: $ENV_OCI_CONFIG_PROFIL 
+                      ENV_OCI_STREAM_ENDPOINT : $ENV_OCI_STREAM_ENDPOINT 
+                      ENV_STREAM_QUEUE_MAPPINGS_JSON : $ENV_STREAM_QUEUE_MAPPINGS_JSON
+                      ENV_OCI_QUEUE_ENDPOINT : $ENV_OCI_QUEUE_ENDPOINT
+                      ENV_CONNECTION_STRING_POSTGRES_INVENTORY : $ENV_CONNECTION_STRING_POSTGRES_INVENTORY
+                      ENV_CONNECTION_STRING_POSTGRES : $ENV_CONNECTION_STRING_POSTGRES
+                      ENV_CONNECTION_STRING_SETTING : $ENV_CONNECTION_STRING_SETTING
+                      ENV_CONNECTION_STRING_USER : $ENV_CONNECTION_STRING_USER
+                      ENV_CONNECTION_POSTGRES : $ENV_CONNECTION_POSTGRES
+                      ENV_CONNECTION_STRING_LOANS : $ENV_CONNECTION_STRING_LOANS 
+                      ENV_CONNECTION_STRING_USERS : $ENV_CONNECTION_STRING_USERS
+                      ENV_CONNECTION_STRING_POSTGRES : $ENV_CONNECTION_STRING_POSTGRES
+                      ENV_OCI_QUEUE: $ENV_OCI_QUEUE
+                      ENV_HOST_API: $ENV_HOST_API
+                      ENV_NAME_SPACE: $ENV_NAME_SPACE
+                      ENV_BUCKET_NAME: $ENV_BUCKET_NAME
+                      ENV_CONTENT_TYPE: $ENV_CONTENT_TYPE
+                      ENV_FILE_PATH: $ENV_FILE_PATH
+                      ENV_NAME_SPACE_TEMPLATE: $ENV_NAME_SPACE_TEMPLATE
+                      ENV_BUCKET_NAME_TEMPLATE: $ENV_BUCKET_NAME_TEMPLATE
+                      ENV_OCI_QUEUE_ENDPOINT: $ENV_OCI_QUEUE_ENDPOINT
+                      ENV_OCI_QUEUE_VALIDATION: $ENV_OCI_QUEUE_VALIDATION
+                      ENV_OCI_LOG_GROUP: $ENV_OCI_LOG_GROUP
+                      ENV_END_POINT: $END_POINT
+                      ENV_OCI_STREAM_ENDPOINT: $ENV_OCI_STREAM_ENDPOINT
+                      ENV_PROCESS_STREAM_OCID: $ENV_PROCESS_STREAM_OCID
+                      ENV_OBJECT_NAME_TEMPLATE: $ENV_OBJECT_NAME_TEMPLATE
+                      ENV_CONNECTION_STRING_SQL : $ENV_CONNECTION_STRING_SQL  
+                      ENV_CONNECTION_STRING_POSTGRES : $ENV_CONNECTION_STRING_POSTGRES
+                      ENV_HOST_API : $ENV_HOST_API        
+                      ENV_NAME_SPACE : $ENV_NAME_SPACE
+                      ENV_BUCKET_NAME : $ENV_BUCKET_NAME
+                      ENV_CONTENT_TYPE : $ENV_CONTENT_TYPE
+                      ENV_FILE_PATH : $ENV_FILE_PATH      
+                      ENV_NAME_SPACE_TEMPLATE : $ENV_NAME_SPACE_TEMPLATE  
+                      ENV_BUCKET_NAME_TEMPLATE : $ENV_BUCKET_NAME_TEMPLATE        
+                      ENV_OBJECT_NAME_TEMPLATE_X100 : $ENV_OBJECT_NAME_TEMPLATE_X100
+                      ENV_OBJECT_NAME_TEMPLATE_X200 : $ENV_OBJECT_NAME_TEMPLATE_X200
+                      ENV_CONNECTION_STRING_CALENDAR : $ENV_CONNECTION_STRING_CALENDAR
+                      ENV_ENV_CONNECTION_STRING_IAM : $ENV_ENV_CONNECTION_STRING_IAM
+                      ENV_CONNECTION_STRING_TRD : $ENV_CONNECTION_STRING_TRD
+                      ENV_CLIENT_ID : $ENV_CLIENT_ID
+                      ENV_CLIENT_SECRET : $ENV_CLIENT_SECRET
+                      ENV_GRANT_TYPE: $ENV_GRANT_TYPE        
+                      ENV_SCOPE : $ENV_SCOPE
+                      ENV_CONNECTION_STRING_POSTGRES : $ENV_CONNECTION_STRING_POSTGRES
+                      ENV_LOG_IDENTIFIER : $ENV_LOG_IDENTIFIER
+                      ENV_OCI_PROFILE : $ENV_OCI_PROFILE
+                      ENV_OCI_NAMESPACE_NAME : $ENV_OCI_NAMESPACE_NAME
+                      ENV_OCI_BUCKET_NAME : $ENV_OCI_BUCKET_NAME
+                      ENV_OCI_REGION : $ENV_OCI_REGION
+                      ENV_SCIM_CLIENT_SECRET : $ENV_SCIM_CLIENT_SECRET
+                      ENV_SCIM_CLIENT_ID : $ENV_SCIM_CLIENT_ID
+                      ENV_SMTP_SECURITY : $ENV_SMTP_SECURITY
+                      ENV_SMTP_USERNAME : $ENV_SMTP_USERNAME     
+                      ENV_SMTP_PASSWORD : $ENV_SMTP_PASSWORD
+                      ENV_SMTP_PORT : $ENV_SMTP_PORT
+                      ENV_SMTP_ENDPOINT : $ENV_SMTP_ENDPOINT                                                                                                      
+        "dev":
+            - step:
+                name: Login to Docker Hub & Use Private Image
+                deployment: Development
+                size: 2x
+                script:
+                  - echo $DOCKER_HUB_PASSWORD | docker login -u $DOCKER_HUB_USERNAME --password-stdin
+                  - pipe: docker://gerencia2024/pipeline_docker_back 
+                    variables:
+                      DOCKER_HUB_USERNAME: $DOCKER_HUB_USERNAME
+                      DOCKER_HUB_PASSWORD: $DOCKER_HUB_PASSWORD
+                      REPOSITORY_IMAGE_NAME: $REPOSITORY_IMAGE_NAME
+                      BITBUCKET_BRANCH: $BITBUCKET_BRANCH
+                      OCI_PRIVATE_KEY_BASE64: $OCI_PRIVATE_KEY_BASE64
+                      OCI_USER_ID: $OCI_USER_ID
+                      OCI_FINGERPRINT: $OCI_FINGERPRINT
+                      OCI_TENANCY_ID: $OCI_TENANCY_ID
+                      REGION: $REGION
+                      SHAPE: $SHAPE
+                      OCI_COMPARTMENT_ID: $OCI_COMPARTMENT_ID_DEV
+                      AVAILABILITY_DOMAIN: $AVAILABILITY_DOMAIN
+                      OCI_SUBNET: $OCI_SUBNET_PRIVATE_DEV
+                      OCI_CONTAINER_NAME: $REPOSITORY_IMAGE_NAMES
+                      OCI_GATEWAY_1 : $OCI_GATEWAY_1
+                      OCI_GATEWAY_2 : $OCI_GATEWAY_2
+                      OCI_GATEWAY_COMPARTMENT: $OCI_GATEWAY_COMPARTMENT
+                      ENV_CONNECTION_STRING: $ENV_CONNECTION_STRING
+                      ENV_OCI_CONFIG_PATH: $ENV_OCI_CONFIG_PATH
+                      ENV_OCI_LOG_GROUP: $ENV_OCI_LOG_GROUP
+                      IS_PUBLIC_IP_ASSIGNED: $IS_PUBLIC_IP_ASSIGNED
+                      ENV_CONNECTION_STRING_SETTING: $ENV_CONNECTION_STRING_SETTING
+                      ENV_CONNECTION_STRING_LOANS: $ENV_CONNECTION_STRING_LOANS
+                      ENV_SCIM_HOST: $ENV_SCIM_HOST
+                      ENV_HANGFIRE_POSTGRES_CONNECTION_STRING: $ENV_HANGFIRE_POSTGRES_CONNECTION_STRING
+                      ENV_IP_SERVER_PORT_REDIS: $ENV_IP_SERVER_PORT_REDIS
+                      ENV_UPLOAD_BUCKET_NAME: $ENV_UPLOAD_BUCKET_NAME
+                      ENV_UPLOAD_STREAM_OCID: $ENV_UPLOAD_STREAM_OCID
+                      ENV_PROCESS_BUCKET_NAME: $ENV_PROCESS_BUCKET_NAME
+                      ENV_OCI_CONFIG_PROFILE: $ENV_OCI_CONFIG_PROFILE
+                      ENV_OCI_STREAM_ENDPOINT: $ENV_OCI_STREAM_ENDPOINT
+                      ENV_END_POINT: $ENV_END_POINT
+                      ENV_CONNECTION_STRING_POSTGRESQL: $ENV_CONNECTION_STRING_POSTGRESQL
+                      ENV_OCI_CONFIG_PATH: $ENV_OCI_CONFIG_PATH
+                      ENV_IDCS_HOST: $ENV_IDCS_HOST
+                      ENV_CONNECTION_STRING_SETTING : $ENV_CONNECTION_STRING_SETTING
+                      ENV_LOG_GROUP : $ENV_LOG_GROUP
+                      ENV_BUCKET_NAME_TEMPLATE: $ENV_BUCKET_NAME_TEMPLATE
+                      ENV_OCI_QUEUE_ENDPOINT : $ENV_OCI_QUEUE_ENDPOINT
+                      ENV_OCI_QUEUE_VALIDATION : $ENV_OCI_QUEUE_VALIDATION
+                      ENV_NAME_SPACE_TEMPLATE : $ENV_NAME_SPACE_TEMPLATE
+                      ENV_FILE_PATH : $ENV_FILE_PATH 
+                      ENV_CONTENT_TYPE: $ENV_CONTENT_TYPE 
+                      ENV_BUCKET_NAME : $ENV_BUCKET_NAME 
+                      ENV_NAME_SPACE : $ENV_NAME_SPACE
+                      ENV_HOST_API : $ENV_HOST_API
+                      ENV_OCI_QUEUE: $ENV_OCI_QUEUE
+                      ENV_NAMESPACE_NAME: $ENV_NAMESPACE_NAME
+                      ENV_ORIGIN_BUCKET_NAME: $ENV_ORIGIN_BUCKET_NAME
+                      ENV_RESULT_BUCKET_NAME: $ENV_RESULT_BUCKET_NAME
+                      ENV_STREAM_OCID: $ENV_STREAM_OCID
+                      ENV_QUEUE_OCID: $ENV_QUEUE_OCID
+                      ENV_QUEUE_ENDPOINT: $ENV_QUEUE_ENDPOINT
+                      ENV_OCI_USE_RESOURCE_PRINCIPAL: $ENV_OCI_USE_RESOURCE_PRINCIPAL
+                      ENV_STREAM_ENDPOINT: $ENV_STREAM_ENDPOINT
+                      ENV_OBJECT_STORAGE_ENDPOINT: $ENV_OBJECT_STORAGE_ENDPOINT
+                      ENV_STREAM_QUEUE_MAPPINGS_JSON : $ENV_STREAM_QUEUE_MAPPINGS_JSON
+                      ENV_OCI_CONFIG_PROFIL: $ENV_OCI_CONFIG_PROFIL 
+                      ENV_OCI_STREAM_ENDPOINT : $ENV_OCI_STREAM_ENDPOINT 
+                      ENV_STREAM_QUEUE_MAPPINGS_JSON : $ENV_STREAM_QUEUE_MAPPINGS_JSON
+                      ENV_OCI_QUEUE_ENDPOINT : $ENV_OCI_QUEUE_ENDPOINT
+                      ENV_CONNECTION_STRING_POSTGRES_INVENTORY : $ENV_CONNECTION_STRING_POSTGRES_INVENTORY
+                      ENV_CONNECTION_STRING_POSTGRES : $ENV_CONNECTION_STRING_POSTGRES
+                      ENV_CONNECTION_STRING_SETTING : $ENV_CONNECTION_STRING_SETTING
+                      ENV_CONNECTION_STRING_USER : $ENV_CONNECTION_STRING_USER
+                      ENV_CONNECTION_POSTGRES : $ENV_CONNECTION_POSTGRES
+                      ENV_CONNECTION_STRING_LOANS : $ENV_CONNECTION_STRING_LOANS 
+                      ENV_CONNECTION_STRING_POSTGRES : $ENV_CONNECTION_STRING_POSTGRES
+                      ENV_OCI_QUEUE: $ENV_OCI_QUEUE
+                      ENV_HOST_API: $ENV_HOST_API
+                      ENV_NAME_SPACE: $ENV_NAME_SPACE
+                      ENV_BUCKET_NAME: $ENV_BUCKET_NAME
+                      ENV_FILE_PATH: $ENV_FILE_PATH
+                      ENV_NAME_SPACE_TEMPLATE: $ENV_NAME_SPACE_TEMPLATE
+                      ENV_BUCKET_NAME_TEMPLATE: $ENV_BUCKET_NAME_TEMPLATE
+                      ENV_OCI_QUEUE_ENDPOINT: $ENV_OCI_QUEUE_ENDPOINT
+                      ENV_OCI_QUEUE_VALIDATION: $ENV_OCI_QUEUE_VALIDATION
+                      ENV_OCI_LOG_GROUP: $ENV_OCI_LOG_GROUP
+                      ENV_OCI_STREAM_ENDPOINT: $ENV_OCI_STREAM_ENDPOINT
+                      ENV_PROCESS_STREAM_OCID: $ENV_PROCESS_STREAM_OCID
+                      ENV_OBJECT_NAME_TEMPLATE: $ENV_OBJECT_NAME_TEMPLATE
+                      ENV_CONNECTION_STRING_SQL : $ENV_CONNECTION_STRING_SQL  
+                      ENV_CONNECTION_STRING_POSTGRE : $ENV_CONNECTION_STRING_POSTGRE
+                      ENV_HOST_API : $ENV_HOST_API        
+                      ENV_NAME_SPACE : $ENV_NAME_SPACE
+                      ENV_BUCKET_NAME : $ENV_BUCKET_NAME
+                      ENV_CONTENT_TYPE : $ENV_CONTENT_TYPE
+                      ENV_FILE_PATH : $ENV_FILE_PATH      
+                      ENV_NAME_SPACE_TEMPLATE : $ENV_NAME_SPACE_TEMPLATE  
+                      ENV_BUCKET_NAME_TEMPLATE : $ENV_BUCKET_NAME_TEMPLATE        
+                      ENV_OBJECT_NAME_TEMPLATE_X100 : $ENV_OBJECT_NAME_TEMPLATE_X100
+                      ENV_OBJECT_NAME_TEMPLATE_X200 : $ENV_OBJECT_NAME_TEMPLATE_X200
+                      ENV_CONNECTION_STRING_CALENDAR : $ENV_CONNECTION_STRING_CALENDAR
+                      ENV_ENV_CONNECTION_STRING_IAM : $ENV_ENV_CONNECTION_STRING_IAM
+                      ENV_CONNECTION_STRING_TRD : $ENV_CONNECTION_STRING_TRD
+                      ENV_GRANT_TYPE : $ENV_GRANT_TYPE
+                      ENV_SCOPE : $ENV_SCOPE
+                      ENV_LOG_IDENTIFIER : $ENV_LOG_IDENTIFIER
+                      ENV_OCI_PROFILE : $ENV_OCI_PROFILE
+                      ENV_OCI_NAMESPACE_NAME : $ENV_OCI_NAMESPACE_NAME
+                      ENV_OCI_BUCKET_NAME : $ENV_OCI_BUCKET_NAME
+                      ENV_OCI_REGION : $ENV_OCI_REGION
+                      ENV_SCIM_CLIENT_SECRET : $ENV_SCIM_CLIENT_SECRET
+                      ENV_SCIM_CLIENT_ID : $ENV_SCIM_CLIENT_ID
+                      ENV_SMTP_SECURITY : $ENV_SMTP_SECURITY
+                      ENV_SMTP_USERNAME : $ENV_SMTP_USERNAME     
+                      ENV_SMTP_PASSWORD : $ENV_SMTP_PASSWORD
+                      ENV_SMTP_PORT : $ENV_SMTP_PORT
+                      ENV_SMTP_ENDPOINT : $ENV_SMTP_ENDPOINT
+                       ENV_LOG_IDENTIFIER : $ENV_LOG_IDENTIFIER
+                      ENV_OCI_PROFILE : $ENV_OCI_PROFILE
+                      ENV_OCI_NAMESPACE_NAME : $ENV_OCI_NAMESPACE_NAME
+                      ENV_OCI_BUCKET_NAME : $ENV_OCI_BUCKET_NAME
+                      ENV_OCI_REGION : $ENV_OCI_REGION
+                      ENV_SCIM_CLIENT_SECRET : $ENV_SCIM_CLIENT_SECRET
+                      ENV_SCIM_CLIENT_ID : $ENV_SCIM_CLIENT_ID
+                      ENV_SMTP_SECURITY : $ENV_SMTP_SECURITY
+                      ENV_SMTP_USERNAME : $ENV_SMTP_USERNAME     
+                      ENV_SMTP_PASSWORD : $ENV_SMTP_PASSWORD
+                      ENV_SMTP_PORT : $ENV_SMTP_PORT
+                      ENV_SMTP_ENDPOINT : $ENV_SMTP_ENDPOINT       
+                                      
+        "qa":
+            - step:
+                name: Login to Docker Hub & Use Private Image
+                deployment: QA
+                script:
+                  - pipe: docker://gerencia2024/pipeline_docker_image
+                    variables:
+                      DOCKER_HUB_USERNAME: $DOCKER_HUB_USERNAME
+                      DOCKER_HUB_PASSWORD: $DOCKER_HUB_PASSWORD
+                      REPOSITORY_IMAGE_NAME: $REPOSITORY_IMAGE_NAME
+                      BITBUCKET_BRANCH: $BITBUCKET_BRANCH
+                      OCI_PRIVATE_KEY_BASE64: $OCI_PRIVATE_KEY_BASE64
+                      OCI_USER_ID: $OCI_USER_ID
+                      OCI_FINGERPRINT: $OCI_FINGERPRINT
+                      OCI_TENANCY_ID: $OCI_TENANCY_ID
+                      OCI_COMPARTMENT_ID: $OCI_COMPARTMENT_ID_QA
+                      OCI_SUBNET: $OCI_SUBNET_PRIVATE_QA
+                      OCI_CONTAINER_NAME: $REPOSITORY_IMAGE_NAME
+                      IS_PUBLIC_IP_ASSIGNED: $IS_PUBLIC_IP_ASSIGNED
+                      ENV_CONNECTION_STRING: $ENV_CONNECTION_STRING
+                      ENV_OCI_CONFIG_PATH: $ENV_OCI_CONFIG_PATH
+                      ENV_OCI_CONFIG_PROFILE: $ENV_OCI_CONFIG_PROFILE
+                      ENV_OCI_STREAM_ENDPOINT: $ENV_OCI_STREAM_ENDPOINT
+                      ENV_PROCESS_BUCKET_NAME: $ENV_PROCESS_BUCKET_NAME
+                      ENV_PROCESS_STREAM_OCID: $ENV_PROCESS_STREAM_OCID
+                      ENV_UPLOAD_BUCKET_NAME : $ENV_UPLOAD_BUCKET_NAME
+                      ENV_OBJECT_STORAGE_NAMESPACE: $ENV_OBJECT_STORAGE_NAMESPACE
+                      ENV_OBJECT_STORAGE_ENDPOINT: $ENV_OBJECT_STORAGE_ENDPOINT
+                      ENV_OCI_REGION: $ENV_OCI_REGION
+                      ENV_OCI_LOG_GROUP: $ENV_OCI_LOG_GROUP               
+                     
+        
