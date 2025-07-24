@@ -1,2 +1,49 @@
-# radicado
-Repositorio creado autom醫icamente.
+# ms_inventory
+
+Este proyecto es un microservicio de inventario desarrollado como parte de la prueba para desarrollador senior.
+
+## Descripci贸n
+
+El microservicio `ms_inventory` gestiona el inventario de productos, permitiendo operaciones como agregar, actualizar, consultar y eliminar productos.
+
+## Caracter铆sticas
+
+- Gesti贸n de productos en inventario
+- API RESTful para operaciones CRUD
+- Integraci贸n con otros microservicios (si aplica)
+
+## Requisitos
+
+- Python 3.x / Node.js / Java (especificar seg煤n el stack usado)
+- Docker (opcional)
+- Base de datos (MySQL, PostgreSQL, MongoDB, etc.)
+
+## Instalaci贸n
+
+1. Clona el repositorio:
+    ```
+    git clone <URL_DEL_REPOSITORIO>
+    ```
+2. Instala las dependencias:
+    ```
+    cd ms_inventory
+    # pip install -r requirements.txt  (Python)
+    # npm install                   (Node.js)
+    ```
+
+## Uso
+
+1. Inicia el servicio:
+    ```
+    # python app.py
+    # npm start
+    ```
+2. Accede a la API en `http://localhost:PORT`
+
+## Endpoints principales
+
+- `GET /products` - Lista productos
+- `POST /products` - Agrega producto
+- `PUT /products/{id}` - Actualiza producto
+- `DELETE /products/{id}` - Elimina producto
+
