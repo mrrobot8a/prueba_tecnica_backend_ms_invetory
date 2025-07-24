@@ -8,5 +8,40 @@
     "name": "app.security.api-key-header",
     "type": "java.lang.String",
     "description": "A description for 'app.security.api-key-header'"
+  },
+  {
+    "name": "feign.client.config.productService.connectTimeout",
+    "type": "java.lang.String",
+    "description": "A description for 'feign.client.config.productService.connectTimeout'"
+  },
+  {
+    "name": "feign.client.config.productService.loggerLevel",
+    "type": "java.lang.String",
+    "description": "A description for 'feign.client.config.productService.loggerLevel'"
+  },
+  {
+    "name": "feign.client.config.productService.readTimeout",
+    "type": "java.lang.String",
+    "description": "A description for 'feign.client.config.productService.readTimeout'"
+  },
+  {
+    "name": "product.service.url",
+    "type": "java.lang.String",
+    "description": "A description for 'product.service.url'"
+  },
+  {
+    "name": "feign.client.follow-redirects",
+    "type": "java.lang.String",
+    "description": "A description for 'feign.client.follow-redirects'"
+  },
+  {
+    "name": "feign.client.read-timeout",
+    "type": "java.lang.String",
+    "description": "A description for 'feign.client.read-timeout'"
+  },
+  {
+    "name": "feign.client.connect-timeout",
+    "type": "java.lang.String",
+    "description": "A description for 'feign.client.connect-timeout'"
   }
 ]}
