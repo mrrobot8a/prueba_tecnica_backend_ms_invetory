@@ -1,61 +1,65 @@
-# ms_inventory
+Sistema de Gestión de Inventario - Microservicio Spring Boot
+📌 Descripción General
+Microservicio RESTful para la gestión de inventarios que permite:
 
-Este proyecto es un microservicio de inventario desarrollado como parte de la prueba para desarrollador senior.
+Registrar productos en el inventario
 
-## Descripción
+Actualizar existencias
 
-El microservicio `ms_inventory` gestiona el inventario de productos, permitiendo operaciones como agregar, actualizar, consultar y eliminar productos.
+Procesar compras
 
-## Características
+Consultar stock bajo
 
-- Gestión de productos en inventario
-- API RESTful para operaciones CRUD
-- Integración con otros microservicios (si aplica)
+Integración con servicio de productos
 
-## Requisitos
+⚙️ Requisitos Técnicos
+Componente	Versión
+Java	17+
+Maven	3.9+
+Spring Boot	3.2.0
+PostgreSQL	14+
+Docker	20.10+
+🚀 Despliegue Rápido
+1. Configuración Inicial
+bash
+# Clonar repositorio
+git clone https://github.com/tu-repositorio/inventario-ms.git
+cd inventario-ms
+2. Configuración de Base de Datos
+bash
+# Crear base de datos (ejecutar en PostgreSQL)
+CREATE DATABASE inventario_db;
+CREATE USER inventario_user WITH PASSWORD 'dbpassword';
+GRANT ALL PRIVILEGES ON DATABASE inventario_db TO inventario_user;
+3. Ejecución con Docker
+bash
+docker network create inventario-network (Solo si no existe)
+# Construir imagen
+docker build -t ms_inventory .
 
-- Python 3.x / Node.js / Java (especificar según el stack usado)
-- Docker (opcional)
-- Base de datos (MySQL, PostgreSQL, MongoDB, etc.)
+# Ejecutar contenedor
+docker run   --name msinventario   --network inventario-network   -p 8081:8081   -e SPRING_DATASOURCE_URL="jdbc:postgresql://host.docker.internal:5432/inventario_db"   -e SPRING_DATASOURCE_USERNAME="postgres"   -e SPRING_DATASOURCE_PASSWORD="123456"   -e APP_SECURITY_API_KEY="inventario-secreto-789"   -e PRODUCT_SERVICE_URL="http://msproduct:8080"   ms_inventory
 
-## Instalación
+🔍 Endpoints Principales
+Método	Endpoint	Descripción
+POST	/api/v1/inventory	Crear nuevo ítem en inventario
+PUT	/api/v1/inventory	Actualizar inventario
+GET	/api/v1/inventory/{productId}	Consultar por ID de producto
+POST	/api/v1/inventory/process-purchase	Procesar compra
+GET	/api/v1/inventory/low-stock/{threshold}	Productos con stock bajo
+🔌 Configuración de Conexiones
+properties
+# application-prod.properties
+spring.datasource.url=jdbc:postgresql://postgres-db:5432/inventario_db
+spring.datasource.username=inventario_user
+spring.datasource.password=dbpassword
 
-1. Clona el repositorio:
-    ```
-    git clone <URL_DEL_REPOSITORIO>
-    ```
-2. Instala las dependencias:
-    ```
-    cd ms_inventory
-    # pip install -r requirements.txt  (Python)
-    # npm install                   (Node.js)
-    ```
+product.service.url=http://product-service:8080
+product.service.api-key=tu-api-key-secreta
+🧪 Pruebas
+bash
+# Ejecutar pruebas unitarias
+mvn test
 
-## Uso
-
-1. Inicia el servicio:
-    ```
-    # python app.py
-    # npm start
-    ```
-2. Accede a la API en `http://localhost:PORT`
-
-## Endpoints principales
-
-- `GET /products` - Lista productos
-- `POST /products` - Agrega producto
-- `PUT /products/{id}` - Actualiza producto
-- `DELETE /products/{id}` - Elimina producto
-
-
-docker run \
-  --name ms_inventario \
-  --network inventario-network \
-  -p 8081:8081 \
-  -e SPRING_DATASOURCE_URL="jdbc:postgresql://host.docker.internal:5432/inventario_db" \
-  -e SPRING_DATASOURCE_USERNAME="postgres" \
-  -e SPRING_DATASOURCE_PASSWORD="123456" \
-  -e APP_SECURITY_API_KEY="inventario-secreto-789" \
-  -e PRODUCT_SERVICE_URL="http://ms_product:8080" \
-  ms_inventory
-
+# Generar reporte de cobertura
+mvn jacoco:report
