@@ -47,3 +47,15 @@ El microservicio `ms_inventory` gestiona el inventario de productos, permitiendo
 - `PUT /products/{id}` - Actualiza producto
 - `DELETE /products/{id}` - Elimina producto
 
+
+docker run \
+  --name ms_inventario \
+  --network inventario-network \
+  -p 8081:8081 \
+  -e SPRING_DATASOURCE_URL="jdbc:postgresql://host.docker.internal:5432/inventario_db" \
+  -e SPRING_DATASOURCE_USERNAME="postgres" \
+  -e SPRING_DATASOURCE_PASSWORD="123456" \
+  -e APP_SECURITY_API_KEY="inventario-secreto-789" \
+  -e PRODUCT_SERVICE_URL="http://ms_product:8080" \
+  ms_inventory
+
